@@ -18,6 +18,6 @@
 (defn hc-test
   [version]
   (assoc tests/noop-test
-  	     :os  "debian-os"
+  	     :os  debian/os
   	     :db  (db version)
          :ssh { :username "alexey" }))
