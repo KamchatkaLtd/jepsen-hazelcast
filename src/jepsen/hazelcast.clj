@@ -1,6 +1,8 @@
 (ns jepsen.hazelcast
-  (:require [jepsen.tests :as tests]))
+  (:require [jepsen.tests :as tests]
+            [jepsen.control :as control]))
 
 (defn hc-test
   [version]
-  tests/noop-test)
+  (assoc tests/noop-test
+         :ssh { :username "alexey" }))
