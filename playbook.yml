@@ -1,0 +1,65 @@
+---
+- hosts: master
+  sudo: yes
+  vars:
+    - leiningen_version: 2.6.1
+  tasks:
+    - name: "Ensure that root has an ssh key"
+      user: name=root
+            generate_ssh_key=yes 
+    - name: "Retrieve the public key"
+      fetch: src=/root/.ssh/id_rsa.pub
+             dest=/tmp
+             fail_on_missing=yes
+    - name: "Add ssh keys"
+      authorized_key: user=root
+                      key="{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+      register: ssh_key_update
+      until: ssh_key_update|success
+      retries: 3
+      delay: 5
+    - name: "Add jessie-backports"
+      apt_repository: repo="deb http://ftp.debian.org/debian jessie-backports main"
+                      update_cache=yes
+    - name: "Install JDK 8"
+      apt:  pkg={{item}}
+            state=installed
+      with_items: ["openjdk-8-jdk", "openjdk-8-jdk-headless", "libjna-java"]
+    - name: "Download Leiningen"
+      get_url:  url=https://raw.github.com/technomancy/leiningen/{{leiningen_version}}/bin/lein 
+                dest=/usr/local/bin/lein-{{leiningen_version}}
+                mode=0755
+    - name: "Link to main version of Leinigen"
+      file: dest=/usr/local/bin/lein
+            src=/usr/local/bin/lein-{{leiningen_version}}
+            state=link
+    - name: "root may execute Leiningen"
+      lineinfile: line='export LEIN_ROOT=True'
+                  state=present
+                  dest=~root/.bashrc
+
+- hosts: db
+  sudo: yes
+  tasks:
+    - name: "Default root password"
+      user: name=root
+            password='$6$oVzaB6YXqTlv2GQH$w1TtSGU92aYSL5KDZxBsGJZx3NojHDrWQXtZ.npGH9k/xdUolhTHVCq0aX9lKfw4TuEAohD7QacKXTAKXc1mp.'
+    - name: "Add ssh keys"
+      authorized_key: user=root key="{{ lookup('file', '/tmp/master/root/.ssh/id_rsa.pub') }}"
+
+- hosts: all
+  sudo: yes
+  tasks:
+    - name: "Build hosts file"
+      lineinfile: dest=/etc/hosts regexp='.*{{ item }}$' line="{{ hostvars[item].ansible_default_ipv4.address }} {{item}}" state=present
+      when: hostvars[item].ansible_default_ipv4.address is defined
+      with_items: groups['all']
+
+- hosts: master
+  sudo: yes
+  tasks:
+    - name: "Build known_hosts file"
+      shell: "ssh-keyscan -t rsa {{ item }} >> ~/.ssh/known_hosts"
+      with_items: groups['all']
+
+
