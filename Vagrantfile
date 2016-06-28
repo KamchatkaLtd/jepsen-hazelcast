@@ -10,14 +10,16 @@ Vagrant.configure("2") do |config|
 
   (1..N).each do |machine_id|
     config.vm.define "n#{machine_id}" do |db|
+      internal_ip = "192.168.122.#{10 + machine_id}"
+
       db.vm.hostname = "n#{machine_id}"
-      db.vm.network :private_network, :ip => "192.168.122.#{10 + machine_id}", :mac => "001E62AAAAA#{machine_id}"
+      db.vm.network :private_network, :ip => internal_ip, :mac => "001E62AAAAA#{machine_id}"
 
       # Only execute once the Ansible provisioner,
       # when all the machines are up and ready.
       # see https://www.vagrantup.com/docs/provisioning/ansible.html
       if machine_id == N
-      	db.vm.provision :ansible do |ansible|
+        db.vm.provision :ansible do |ansible|
           ansible.limit = "all"
           ansible.playbook = "playbook.yml"
           db_group_def = "n[1:#{N}]"

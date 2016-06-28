@@ -1,14 +1,49 @@
 ---
+- hosts: all
+  become: yes
+  tasks:
+    - name: "Install System V"
+      apt: pkg={{item}} state=installed
+      with_items: ["sysvinit-core", "sysvinit-utils"]
+    - name: activate sysv
+      command: cp /usr/share/sysvinit/inittab /etc/inittab
+      when: ansible_service_mgr == "systemd"
+    - name: "Fix GRUB"
+      lineinfile: dest=/etc/default/grub regexp='^GRUB_CMDLINE_LINUX_DEFAULT.*' line='GRUB_CMDLINE_LINUX_DEFAULT="init=/lib/sysvinit/init console=hvc0 console=ttyS0"'
+      notify: update grub
+  handlers:
+    - name: update grub
+      command: update-grub
+
+- hosts: all
+  become: yes
+  tasks:
+    - name: Restart machine
+      shell: sleep 2 && shutdown -r now "Ansible updates triggered"
+      async: 1
+      poll: 0
+      ignore_errors: true
+      when: ansible_service_mgr == "systemd"
+    - name: Wait for server to shut down
+      local_action: wait_for host={{ ansible_ssh_host }} port={{ ansible_ssh_port }} state=stopped
+      become: false
+      when: ansible_service_mgr == "systemd"
+    - name: Wait for server to come back
+      local_action: wait_for host={{ ansible_ssh_host }} port={{ ansible_ssh_port }} state=started
+      become: false
+    - name: "Purge systemd"
+      apt: name=systemd state=absent purge=yes autoremove=yes
+
 - hosts: master
-  sudo: yes
+  become: yes
   vars:
     - leiningen_version: 2.6.1
   tasks:
-    - name: "Ensure that root has an ssh key"
-      user: name=root
+    - name: "Ensure that vagrant has an ssh key"
+      user: name=vagrant
             generate_ssh_key=yes 
     - name: "Retrieve the public key"
-      fetch: src=/root/.ssh/id_rsa.pub
+      fetch: src=/home/vagrant/.ssh/id_rsa.pub
              dest=/tmp
              fail_on_missing=yes
     - name: "Add ssh keys"
@@ -22,8 +57,7 @@
       apt_repository: repo="deb http://ftp.debian.org/debian jessie-backports main"
                       update_cache=yes
     - name: "Install JDK 8"
-      apt:  pkg={{item}}
-            state=installed
+      apt: pkg={{item}} state=installed
       with_items: ["openjdk-8-jdk", "openjdk-8-jdk-headless", "libjna-java"]
     - name: "Download Leiningen"
       get_url:  url=https://raw.github.com/technomancy/leiningen/{{leiningen_version}}/bin/lein 
@@ -39,27 +73,40 @@
                   dest=~root/.bashrc
 
 - hosts: db
-  sudo: yes
+  become: yes
+  vars:
+    - root_password: "$6$KjnPiWPunw$mlurOfmsHgRaYDOFO5ctTupaLisEDjBYWGSSZxGT.mrr1G8BH/AeU1tWloj8lg9KVOAPzmwCaTxPbkz76jDPQ/"
   tasks:
     - name: "Default root password"
       user: name=root
-            password='$6$oVzaB6YXqTlv2GQH$w1TtSGU92aYSL5KDZxBsGJZx3NojHDrWQXtZ.npGH9k/xdUolhTHVCq0aX9lKfw4TuEAohD7QacKXTAKXc1mp.'
+            password={{ root_password }}
+
     - name: "Add ssh keys"
-      authorized_key: user=root key="{{ lookup('file', '/tmp/master/root/.ssh/id_rsa.pub') }}"
+      authorized_key: user=root key="{{ lookup('file', '/tmp/master/home/vagrant/.ssh/id_rsa.pub') }}"
+
+    - name: "Enable root login"
+      lineinfile: dest=/etc/ssh/sshd_config regexp='^PermitRootLogin .*' line='PermitRootLogin yes' 
+      notify:
+        - restart sshd
+
+  handlers:
+    - name: restart sshd
+      command: service ssh restart
 
 - hosts: all
-  sudo: yes
+  become: yes
   tasks:
     - name: "Build hosts file"
-      lineinfile: dest=/etc/hosts regexp='.*{{ item }}$' line="{{ hostvars[item].ansible_default_ipv4.address }} {{item}}" state=present
-      when: hostvars[item].ansible_default_ipv4.address is defined
+      lineinfile: dest=/etc/hosts regexp='.*{{ item }}$' line="{{ hostvars[item].ansible_eth1.ipv4.address }} {{item}}" state=present
+      when: hostvars[item].ansible_eth1.ipv4.address is defined
       with_items: groups['all']
 
 - hosts: master
-  sudo: yes
+  become: no
   tasks:
-    - name: "Build known_hosts file"
-      shell: "ssh-keyscan -t rsa {{ item }} >> ~/.ssh/known_hosts"
+    - name: "Create vagrant's known_hosts file"
+      file: dest=~/.ssh/known_hosts mode=0600 state=touch
+    - name: "Build vagrant's known_hosts file"
+      lineinfile: dest=~/.ssh/known_hosts regexp='^{{ item }} .*$' line="{{ item }} ssh-rsa {{ hostvars[item].ansible_ssh_host_key_rsa_public }}" state=present
+      when: hostvars[item].ansible_ssh_host_key_rsa_public is defined
       with_items: groups['all']
-
-

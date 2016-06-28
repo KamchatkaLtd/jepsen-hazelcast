@@ -19,5 +19,4 @@
   [version]
   (assoc tests/noop-test
   	     :os  debian/os
-  	     :db  (db version)
-         :ssh { :username "alexey" }))
+  	     :db  (db version)))
