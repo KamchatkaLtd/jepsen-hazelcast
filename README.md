@@ -4,9 +4,18 @@ A Clojure library designed to ... well, that part is up to you.
 
 ## Usage
 
-Install Vagrant (and probably VirtualBox)
+* Install Vagrant (and VirtualBox)
+* Install Ansible (1.9+)
+* `vagrant up`
+* If vagrant hangs on "waiting for servers to shut down," stop it and 
+** `vagrant provision`
+* `vagrant ssh master`
+* `cd /vagrant`
+* `lein test`
 
-   vagrant plugin install vagrant-dnsmasq
+When you change the test on the host machine, push the changes made to the master guest with `vagrant rsync`
+
+Have fun!
 
 ## License
 
