@@ -8,12 +8,12 @@
     - name: activate sysv
       command: cp /usr/share/sysvinit/inittab /etc/inittab
       when: ansible_service_mgr == "systemd"
-    - name: "Fix GRUB"
-      lineinfile: dest=/etc/default/grub regexp='^GRUB_CMDLINE_LINUX_DEFAULT.*' line='GRUB_CMDLINE_LINUX_DEFAULT="init=/lib/sysvinit/init console=hvc0 console=ttyS0"'
-      notify: update grub
-  handlers:
-    - name: update grub
-      command: update-grub
+#    - name: "Fix GRUB"
+#      lineinfile: dest=/etc/default/grub regexp='^GRUB_CMDLINE_LINUX_DEFAULT.*' line='GRUB_CMDLINE_LINUX_DEFAULT="init=/lib/sysvinit/init console=hvc0 console=ttyS0"'
+#      notify: update grub
+#  handlers:
+#    - name: update grub
+#      command: update-grub
 
 - hosts: all
   become: yes
@@ -24,15 +24,15 @@
       poll: 0
       ignore_errors: true
       when: ansible_service_mgr == "systemd"
-    - name: Wait for server to shut down
-      local_action: wait_for host={{ ansible_ssh_host }} port={{ ansible_ssh_port }} state=stopped
-      become: false
-      when: ansible_service_mgr == "systemd"
+#    - name: Wait for server to shut down
+#      local_action: wait_for host={{ ansible_ssh_host }} port={{ ansible_ssh_port }} state=stopped
+#      become: false
+#      when: ansible_service_mgr == "systemd"
     - name: Wait for server to come back
       local_action: wait_for host={{ ansible_ssh_host }} port={{ ansible_ssh_port }} state=started
       become: false
     - name: "Purge systemd"
-      apt: name=systemd state=absent purge=yes autoremove=yes
+      apt: name=systemd state=absent purge=yes # autoremove=yes
 
 - hosts: master
   become: yes
@@ -88,6 +88,10 @@
       lineinfile: dest=/etc/ssh/sshd_config regexp='^PermitRootLogin .*' line='PermitRootLogin yes' 
       notify:
         - restart sshd
+
+    - name: "Add jessie-backports"
+      apt_repository: repo="deb http://ftp.debian.org/debian jessie-backports main"
+                      update_cache=yes
 
   handlers:
     - name: restart sshd

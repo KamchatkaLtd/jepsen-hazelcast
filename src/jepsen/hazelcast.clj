@@ -1,10 +1,45 @@
 (ns jepsen.hazelcast
-  (:require [clojure.tools.logging :refer :all]
-            [jepsen [db    :as db]
-                    [control :as c]
-                    [tests :as tests]]
-            [jepsen.os.debian :as debian]))
+  (:require [cheshire.core           :as json]
+            [clojure.java.io         :as io]
+            [clojure.string          :as str]
+            [chazel                  :as hz]
+            [jepsen [core            :as jepsen]
+                    [db              :as db]
+                    [util            :as util :refer [meh timeout]]
+                    [control         :as c :refer [|]]
+                    [client          :as client]
+                    [checker         :as checker]
+                    [model           :as model]
+                    [generator       :as gen]
+                    [nemesis         :as nemesis]
+                    [store           :as store]
+                    [report          :as report]
+                    [tests           :as tests]]
+            [jepsen.checker.timeline :as timeline]
+            [jepsen.control.net      :as net]
+            [clj-http.client         :as http]
+            [clojure.tools.logging   :refer :all]
+            [jepsen.os.debian        :as debian]))
 
+(defn wait
+  "Waits for hazelcast to be healthy on the current node. Color is red,
+  yellow, or green; timeout is in seconds."
+  [timeout-secs color]
+  (timeout (* 1000 timeout-secs)
+           (throw (RuntimeException.
+                    (str "Timed out after "
+                         timeout-secs
+                         " s waiting for hazelcast cluster recovery")))
+    (loop []
+      (when
+        (try
+          (c/exec :curl :-XGET
+                  (str "http://localhost:9200/_cluster/health?"
+                       "wait_for_status=" (name color)
+                       "&timeout=" timeout-secs "s"))
+          false
+          (catch RuntimeException e true))
+        (recur)))))
 
 (defn install!
   "Install Hazelcast!"
@@ -14,22 +49,12 @@
           uri (str "http://central.maven.org/maven2/"
                    "com/hazelcast/hazelcast/" version "/" jar)]
 
-         (loop []
-           (info node "downloading Hazelcast")
-           (c/exec :wget :-c uri)
-           (c/exec :wget :-c (str uri ".asc.sha1"))
-           (when (try
-                      (c/exec :sha1sum :-c (str jar ".asc.sha1"))
-                      false
-                      (catch RuntimeException e
-                        (info "SHA failed" (.getMessage e))
-                        true))
-                 (recur)))
+        (info node "downloading Hazelcast")
+        (c/exec :wget :-c uri)
 
         (info node "installing Hazelcast")
-        (debian/install ["openjdk-8-jre-headless"]
-        (s/exec :ln :-sf jar :hazelcast.jar))
-    )))
+        (debian/install ["openjdk-8-jre-headless"])
+        (c/exec :ln :-sf jar :hazelcast.jar))))
 
 (defn configure!
   "Configures Hazelcast."

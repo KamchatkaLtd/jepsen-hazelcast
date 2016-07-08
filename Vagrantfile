@@ -4,8 +4,12 @@ Vagrant.configure("2") do |config|
 
   config.vm.box = "debian/jessie64"
 
+  config.vm.provider :lxc do |lxc|
+    lxc.customize 'network.mtu','1400'
+  end
+
   config.vm.define "master" do |master|
-    master.vm.network :private_network, :ip => "192.168.122.10", :mac => "5254008e29d2"
+    master.vm.network :private_network, :ip => "192.168.122.10", :mac => "5254008e29d2", lxc__bridge_name: 'vlxcbr1'
   end
 
   (1..N).each do |machine_id|
@@ -13,7 +17,7 @@ Vagrant.configure("2") do |config|
       internal_ip = "192.168.122.#{10 + machine_id}"
 
       db.vm.hostname = "n#{machine_id}"
-      db.vm.network :private_network, :ip => internal_ip, :mac => "001E62AAAAA#{machine_id}"
+      db.vm.network :private_network, :ip => internal_ip, :mac => "001E62AAAAA#{machine_id}", lxc__bridge_name: 'vlxcbr1'
 
       # Only execute once the Ansible provisioner,
       # when all the machines are up and ready.
